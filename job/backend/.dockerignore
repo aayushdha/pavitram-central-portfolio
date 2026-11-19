@@ -1,0 +1,17 @@
+node_modules
+dist
+.env
+.env.*
+*.log
+.git
+.github
+Dockerfile
+docker-compose.yml
+README.md
+
+# Leftover real-estate template files — never part of the job portal build.
+src/modules/properties
+src/modules/inquiries
+src/database/entities/property.entity.ts
+src/database/entities/inquiry.entity.ts
+src/database/entities/favorite.entity.ts

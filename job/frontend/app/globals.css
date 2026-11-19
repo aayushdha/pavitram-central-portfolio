@@ -1,0 +1,130 @@
+@import "tailwindcss";
+
+:root {
+  /* Off-white / cream — page background, light section background */
+  --background: #FAF7F2;
+  --surface: #FFFFFF;
+  /* Charcoal navy — body text on light background */
+  --foreground: #1A2238;
+  /* Muted grey — paragraph / body text */
+  --muted: #6B6F7B;
+  /* Warm, gold-tinted hairline border to match the cream/gold palette */
+  --border: #E8E1D2;
+
+  /* Charcoal navy — headings on light sections */
+  --ink: #1A2238;
+  /* Deep navy / almost-black — hero & dark section background */
+  --ink-900: #0B0F1F;
+  --ink-800: #141A30;
+
+  /* Antique gold — logo, headings accent, button borders, icon backgrounds */
+  --brand-50: #FBF3DC;
+  --brand-100: #F3E2AE;
+  --brand-400: #D9B54C;
+  --brand-500: #C9A227;
+  --brand-600: #AD8A1E;
+  --brand-700: #8A6F17;
+
+  /* Classic gold — secondary accent (badges, sparks, highlights) */
+  --spark-400: #E4C767;
+  --spark-500: #D4AF37;
+  --spark-600: #B8942A;
+
+  --good-500: #17A672;
+  --good-100: #DDF5EA;
+  --warn-500: #E0A700;
+  --warn-100: #FCF1CC;
+  --bad-500: #E5484D;
+  --bad-100: #FBE3E4;
+
+  --font-display: "Avenir Next", "Segoe UI", ui-sans-serif, system-ui, sans-serif;
+  --font-body: "Segoe UI", ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --font-mono: "SFMono-Regular", ui-monospace, "JetBrains Mono", Menlo, monospace;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-surface: var(--surface);
+  --color-foreground: var(--foreground);
+  --color-muted: var(--muted);
+  --color-border: var(--border);
+
+  --color-ink: var(--ink);
+  --color-ink-900: var(--ink-900);
+  --color-ink-800: var(--ink-800);
+
+  --color-brand-50: var(--brand-50);
+  --color-brand-100: var(--brand-100);
+  --color-brand-400: var(--brand-400);
+  --color-brand-500: var(--brand-500);
+  --color-brand-600: var(--brand-600);
+  --color-brand-700: var(--brand-700);
+
+  --color-spark-400: var(--spark-400);
+  --color-spark-500: var(--spark-500);
+  --color-spark-600: var(--spark-600);
+
+  --color-good-500: var(--good-500);
+  --color-good-100: var(--good-100);
+  --color-warn-500: var(--warn-500);
+  --color-warn-100: var(--warn-100);
+  --color-bad-500: var(--bad-500);
+  --color-bad-100: var(--bad-100);
+
+  --font-display: var(--font-display);
+  --font-body: var(--font-body);
+  --font-mono: var(--font-mono);
+}
+
+* {
+  border-color: var(--border);
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-body), ui-sans-serif, system-ui, sans-serif;
+}
+
+h1, h2, h3, h4, .font-display {
+  font-family: var(--font-display), ui-sans-serif, system-ui, sans-serif;
+}
+
+::selection {
+  background: var(--brand-100);
+  color: var(--brand-700);
+}
+
+/* Match-ring signature element */
+.match-ring {
+  transform: rotate(-90deg);
+}
+.match-ring circle {
+  transition: stroke-dashoffset 0.6s cubic-bezier(0.65, 0, 0.35, 1);
+}
+
+:focus-visible {
+  outline: 2px solid var(--brand-500);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation-duration: 0.001ms !important;
+    transition-duration: 0.001ms !important;
+  }
+}
+
+.scrollbar-thin::-webkit-scrollbar {
+  height: 6px;
+  width: 6px;
+}
+.scrollbar-thin::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 999px;
+}

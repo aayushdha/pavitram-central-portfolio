@@ -1,0 +1,790 @@
+// Pavitram — complete data model
+// Har table Postgres me "ecom_" prefix ke saath banti hai (@@map).
+// Yeh schema frontend/frontend/lib/data.js aur lib/store.js ke seedState()
+// me jitne bhi data collections/fields use ho rahe hain unn sabko cover karta hai.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ---------------------------------------------------------------------------
+// Users (no auth endpoints exposed — table exists because Vendor/BusinessBuyer
+// /Cart/Wishlist/SavedAddress sab User ko reference karte hain)
+// ---------------------------------------------------------------------------
+model User {
+  id        String   @id @default(cuid())
+  name      String
+  email     String   @unique
+  password  String
+  role      String   // admin | vendor | b2b | customer
+  vendorId  String?
+  buyerId   String?
+  phone     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  cartItems      CartItem[]
+  wishlistItems  WishlistItem[]
+  savedAddresses SavedAddress[]
+  loyaltyAccount LoyaltyAccount?
+
+  @@map("ecom_users")
+}
+
+// ---------------------------------------------------------------------------
+// Catalog
+// ---------------------------------------------------------------------------
+model Category {
+  id        String   @id @default(cuid())
+  name      String
+  icon      String?
+  count     Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("ecom_categories")
+}
+
+model Product {
+  id          String   @id @default(cuid())
+  name        String
+  vendor      String? // vendor display name (denormalized, matches frontend seed)
+  vendorId    String?
+  vendorRef   Vendor?  @relation(fields: [vendorId], references: [id], onDelete: SetNull)
+  category    String?
+  image       String? // cover/primary image — kept for backward compatibility, should equal images[0]
+  images      String[] @default([]) // full photo gallery, shown on the product detail page
+  videos      String[] @default([]) // product video URLs (MinIO/S3), shown alongside the gallery
+  color       String?
+  rating      Float?   @default(0)
+  reviews     Int?     @default(0)
+  mrp         Float?
+  price       Float
+  channels    String[] @default([])
+  moq         Int?     @default(1)
+  stock       Int      @default(0)
+  description String?
+  status      String   @default("Pending") // Pending | Approved | Rejected — admin moderates every new/edited listing before it can show on the storefront
+  rejectionReason String? // set by admin when status = "Rejected" — shown back to the vendor on their product list
+  hsnCode     String? // HSN/SAC code for GST classification — used by the GST auto-calculation engine
+  gstRate     Float?  @default(18) // GST % applicable to this product (e.g. 5, 12, 18, 28)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  tierPricing   ProductTierPricing[]
+  // BUGFIX: the "Add Product" form's variant builder (size/color options,
+  // each with its own price/stock/SKU) has always sent a `variants` array,
+  // but there was no column or DTO field for it at all — whitelist:true on
+  // the global ValidationPipe silently dropped it on every create/update.
+  // Every vendor who configured variants lost that data with no error.
+  variants      ProductVariant[]
+  cartItems     CartItem[]
+  wishlistItems WishlistItem[]
+
+  @@map("ecom_products")
+}
+
+model ProductTierPricing {
+  id        String  @id @default(cuid())
+  productId String
+  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+  min       Int
+  max       Int?
+  price     Float
+
+  @@map("ecom_product_tier_pricing")
+}
+
+model ProductVariant {
+  id        String  @id @default(cuid())
+  productId String
+  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+  name      String // e.g. "Large / Indigo"
+  sku       String?
+  price     Float?
+  stock     Int     @default(0)
+
+  @@map("ecom_product_variants")
+}
+
+// ---------------------------------------------------------------------------
+// Vendors
+// ---------------------------------------------------------------------------
+model Vendor {
+  id            String   @id @default(cuid())
+  name          String
+  channel       String? // Both | B2B Only | B2C Only
+  status        String?  @default("Active")
+  gmvB2C        Float?   @default(0)
+  gmvB2B        Float?   @default(0)
+  rating        Float?   @default(0)
+  returns       String?
+  joined        String?
+  // BUGFIX: same class of bug as BusinessBuyer — the vendor registration
+  // form collects GSTIN, PAN, and a payout bank account (all marked
+  // required), but there was no column to save them into, so they were
+  // silently dropped on submit.
+  gstin         String?
+  pan           String?
+  bankAccount   String?
+  kycDocuments  Json?    // labeled KYC docs, e.g. {"GST Certificate": url, "PAN Card": url, "Signature": url}
+  rejectionReason String? // set by admin when status is moved to "Rejected"/"Suspended" during KYC review — shown back to the vendor
+  state         String? // origin state (e.g. "Gujarat") — used by the GST auto-calculation engine to determine intra vs inter-state tax
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  products        Product[]
+  storeProfile    StoreProfile?
+  contractPricing ContractPricing[]
+  vendorReviews   VendorReview[]
+  payouts         Payout[]
+
+  @@map("ecom_vendors")
+}
+
+model StoreProfile {
+  id        String   @id @default(cuid())
+  vendorId  String   @unique
+  vendor    Vendor   @relation(fields: [vendorId], references: [id], onDelete: Cascade)
+  name      String
+  tagline   String?
+  // BUGFIX: the Store Setup page's "About the Brand" textarea, logo upload,
+  // and cover image upload are all promised by the guide (Section 3.3) —
+  // "about" was being collected in form state but had nowhere to be saved
+  // (frontend comment even flagged this), and logo/cover had no upload UI
+  // or column at all.
+  about     String?
+  logoUrl   String?
+  coverUrl  String?
+  channels  String[] @default([])
+  instagram String?
+  website   String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  warehouses Warehouse[]
+
+  @@map("ecom_store_profiles")
+}
+
+model Warehouse {
+  id             String       @id @default(cuid())
+  storeProfileId String
+  storeProfile   StoreProfile @relation(fields: [storeProfileId], references: [id], onDelete: Cascade)
+  label          String
+  pincode        String
+  priority       String?
+
+  @@map("ecom_warehouses")
+}
+
+model ContractPricing {
+  id        String   @id @default(cuid())
+  buyer     String
+  product   String
+  rate      String
+  validity  String?
+  vendorId  String?
+  vendor    Vendor?  @relation(fields: [vendorId], references: [id], onDelete: SetNull)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("ecom_contract_pricing")
+}
+
+model VendorReview {
+  id             String   @id @default(cuid())
+  from           String
+  type           String? // "B2B structured" | "B2C"
+  onTime         Int?
+  quality        Int?
+  responsiveness Int?
+  note           String?
+  vendorId       String?
+  vendor         Vendor?  @relation(fields: [vendorId], references: [id], onDelete: SetNull)
+  createdAt      DateTime @default(now())
+
+  @@map("ecom_vendor_reviews")
+}
+
+model VendorScorecard {
+  id          String @id @default(cuid())
+  vendor      String
+  sla         Int
+  quality     Float
+  rfqResponse String
+  composite   String
+
+  @@map("ecom_vendor_scorecards")
+}
+
+// ---------------------------------------------------------------------------
+// B2B business buyers
+// ---------------------------------------------------------------------------
+model BusinessBuyer {
+  id           String   @id @default(cuid())
+  company      String
+  segment      String? // Retailer | Distributor | Institutional | Export
+  gstin        String?
+  // BUGFIX: the registration form (and the guide's own Section 2.1) collects
+  // business PAN, CIN/Udyam number, trade license number, and a bank
+  // account for settlements — none of these had a column to be stored in,
+  // so they were silently discarded on submit even though the form marked
+  // several of them "required". Admin KYC review (Section 4.4) could never
+  // actually see this data.
+  pan          String?
+  cin          String?
+  tradeLicense String?
+  bankAccount  String?
+  status       String?  @default("Under Review")
+  creditLimit  Float?   @default(0)
+  utilized     Float?   @default(0)
+  terms        String?
+  kycDocuments Json?    // labeled KYC docs, e.g. {"GST Certificate": url, "PAN Card": url, "Signature": url}
+  rejectionReason String? // set by admin when status is moved to "Rejected" during KYC review — shown back to the business account
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  teamMembers TeamMember[]
+
+  @@map("ecom_business_buyers")
+}
+
+model TeamMember {
+  id            String         @id @default(cuid())
+  name          String
+  role          String
+  email         String
+  limit         String?
+  buyerId       String?
+  businessBuyer BusinessBuyer? @relation(fields: [buyerId], references: [id], onDelete: SetNull)
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+
+  @@map("ecom_team_members")
+}
+
+model Receivable {
+  id        String   @id @default(cuid())
+  buyer     String
+  invoiced  Float?   @default(0)
+  collected Float?   @default(0)
+  overdue   Float?   @default(0)
+  terms     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("ecom_receivables")
+}
+
+model B2bInvoice {
+  id        String   @id @default(cuid())
+  period    String
+  orders    Int?     @default(0)
+  amount    Float
+  status    String?  @default("Due")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("ecom_b2b_invoices")
+}
+
+model CreditNote {
+  id        String   @id @default(cuid())
+  against   String? // order id text reference (as shown in frontend)
+  orderId   String?
+  order     Order?   @relation(fields: [orderId], references: [id], onDelete: SetNull)
+  reason    String?
+  amount    Float
+  status    String?  @default("Pending Adjustment")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("ecom_credit_notes")
+}
+
+model SampleOrder {
+  id        String   @id @default(cuid())
+  buyer     String
+  buyerId   String?
+  vendorId  String?
+  product   String
+  qty       Int
+  status    String?  @default("Requested")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("ecom_sample_orders")
+}
+
+// ---------------------------------------------------------------------------
+// Orders / RFQs
+// ---------------------------------------------------------------------------
+model Order {
+  id        String   @id // client-provided format e.g. PVT-10231
+  type      String // B2C | B2B
+  customer  String
+  // BUGFIX: previously the ONLY way to find "my orders" / "orders for my
+  // store" was string-matching the customer/vendor display NAME snapshot
+  // taken at checkout time. That breaks the moment a customer edits their
+  // profile name (Section 1.11) or a vendor renames their store (Section
+  // 3.3) — every order placed before the rename silently stops matching
+  // and disappears from "My Orders", order tracking, the Returns
+  // eligible-order list, and the vendor's Orders/Earnings/Dashboard pages.
+  // It also meant two accounts sharing the same display name could see —
+  // and request returns against — each other's orders. Adding real,
+  // immutable id columns (nullable so existing rows aren't broken) lets
+  // every screen match on identity instead of a mutable name string.
+  userId    String? // customer's user id, set at checkout — never renamed later
+  vendorId  String? // vendor id the sub-order belongs to — never renamed later
+  vendor    String?
+  amount    Float
+  // BUGFIX: the vendor Earnings page ("Commission Paid" — calculated
+  // automatically by the platform's commission rules, per the guide)
+  // actually just multiplied every vendor's sales by a hardcoded 10% in the
+  // frontend. The admin's real Commission Rules (per-product/vendor/
+  // category/global, flat-or-percent, B2B volume slabs) had zero effect on
+  // anything. Now resolved via CommissionsService.resolveRate() and stored
+  // per order at creation time, so Earnings can sum the real number.
+  commission Float?
+  couponCode String? // code applied at checkout, if any — for audit/analytics
+  status    String?  @default("Pending")
+  date      String?
+  items     Json?    // [{ product, qty, price }] — snapshot of the cart at checkout time, so vendor/customer can see exactly what was ordered
+  address   Json?    // full delivery address snapshot at checkout time (name, phone, line1/2, landmark, city, state, pincode)
+  payment   String?  // e.g. "Cash on Delivery"
+  deliveryDate    String? // set by vendor when confirming the order — expected delivery date shown to the customer
+  trackingStatus  String?  @default("Order Placed") // Order Placed -> Confirmed by Vendor -> Packed -> Shipped -> Out for Delivery -> Delivered (or Cancelled)
+  trackingHistory Json?    // [{ status, note, at }] append-only timeline, oldest first, rendered on the customer tracking page
+  taxBreakdown    Json?    // GST engine output: { taxType, gstRate, taxableAmount, cgst, sgst, igst, totalTax, totalWithTax, vendorState, customerState } — computed automatically at checkout, see GstService
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  creditNotes CreditNote[]
+
+  @@map("ecom_orders")
+}
+
+model Rfq {
+  id        String   @id @default(cuid())
+  buyer     String
+  // BUGFIX (see below): buyerId/vendorId added for stable routing/matching.
+  buyerId   String?
+  vendorId  String?  // which vendor this RFQ was routed to (the product's vendor at the time it was raised)
+  product   String
+  qty       String
+  status    String?  @default("Awaiting Vendor Response")
+  raised    String?
+  // BUGFIX: same silent-strip bug as the quote fields — the "Raise a new
+  // RFQ" form has always sent notes/targetDate, but with no matching
+  // column they were dropped before the vendor ever saw them.
+  notes      String?
+  targetDate String?
+  // CRITICAL BUGFIX: the vendor "Send Quotation" form has always posted
+  // quotedPrice/leadTime/validUntil, but none of these columns existed on
+  // this model — and the API's global ValidationPipe runs with
+  // `whitelist: true`, which silently STRIPS any request field that isn't
+  // declared on the DTO before it ever reaches the service. So every
+  // vendor's quoted price, lead time, and validity date were silently
+  // thrown away; only `status` ever actually got saved. The vendor saw
+  // "Quotation Sent" and believed it worked; the buyer had no quote to
+  // act on. Declaring the columns here (and on the DTO) fixes that.
+  quotedPrice Float?
+  leadTime    String?
+  validUntil  String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("ecom_rfqs")
+}
+
+// ---------------------------------------------------------------------------
+// Cart / Wishlist / Addresses
+// ---------------------------------------------------------------------------
+model CartItem {
+  id        String   @id @default(cuid())
+  userId    String?
+  user      User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  productId String
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  variantId String?
+  qty       Int      @default(1)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("ecom_cart_items")
+}
+
+model WishlistItem {
+  id         String   @id @default(cuid())
+  userId     String?
+  user       User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  productId  String
+  product    Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  // Price-drop alert: if set, alertPrice is the price the customer wants to
+  // be notified at. alertActive flips off once we've notified them once,
+  // so the price-drops endpoint doesn't keep resurfacing the same item.
+  alertPrice   Float?
+  alertActive  Boolean  @default(false)
+  notifiedAt   DateTime?
+  createdAt  DateTime @default(now())
+
+  @@map("ecom_wishlist_items")
+}
+
+// ---------------------------------------------------------------------------
+// Loyalty, Rewards & Referral Engine (Doc §3.1)
+// ---------------------------------------------------------------------------
+model LoyaltyAccount {
+  id             String   @id @default(cuid())
+  userId         String   @unique
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  points         Int      @default(0) // current redeemable balance
+  lifetimePoints Int      @default(0) // total ever earned, drives tier
+  tier           String   @default("Silver") // Silver | Gold | Platinum
+  referralCode   String   @unique
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  transactions LoyaltyTransaction[]
+  referralsMade Referral[] @relation("ReferrerAccount")
+
+  @@map("ecom_loyalty_accounts")
+}
+
+model LoyaltyTransaction {
+  id        String   @id @default(cuid())
+  accountId String
+  account   LoyaltyAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  type      String   // earn | redeem | referral_bonus | expire | adjust
+  points    Int      // positive = credit, negative = debit
+  orderId   String?
+  note      String?
+  createdAt DateTime @default(now())
+
+  @@map("ecom_loyalty_transactions")
+}
+
+model Referral {
+  id               String   @id @default(cuid())
+  referrerAccountId String
+  referrerAccount  LoyaltyAccount @relation("ReferrerAccount", fields: [referrerAccountId], references: [id], onDelete: Cascade)
+  referredEmail    String
+  referredUserId   String?
+  status           String   @default("Pending") // Pending | Completed | Rewarded
+  bonusPoints      Int      @default(0)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@map("ecom_referrals")
+}
+
+// ---------------------------------------------------------------------------
+// Commission & Dynamic Payout Engine (Doc §1.2)
+// ---------------------------------------------------------------------------
+model CommissionRule {
+  id           String   @id @default(cuid())
+  scope        String   // global | category | vendor | product
+  scopeRef     String?  // category name / vendorId / productId, null for global
+  channel      String   @default("Both") // B2C | B2B | Both
+  type         String   @default("percent") // percent | flat
+  value        Float
+  minOrderValue Float?  // for B2B volume slabs, e.g. 5% up to ₹1L
+  maxOrderValue Float?
+  active       Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@map("ecom_commission_rules")
+}
+
+model Payout {
+  id           String   @id @default(cuid())
+  vendorId     String
+  vendor       Vendor   @relation(fields: [vendorId], references: [id], onDelete: Cascade)
+  channel      String   @default("Both") // B2C | B2B | Both
+  periodFrom   String
+  periodTo     String
+  grossSales   Float    @default(0)
+  commission   Float    @default(0)
+  netPayout    Float    @default(0)
+  status       String   @default("Pending") // Pending | Approved | Paid | On Hold
+  paidAt       DateTime?
+  notes        String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@map("ecom_payouts")
+}
+
+// ---------------------------------------------------------------------------
+// Order Resolution & Escalation Matrix — Dispute Management (Doc §1.5)
+// ---------------------------------------------------------------------------
+model Dispute {
+  id           String   @id @default(cuid())
+  orderId      String
+  raisedBy     String   // customer | business_buyer | vendor
+  // BUGFIX: there was no way to scope "my disputes" by id (same class of
+  // issue as Order.userId before that fix) — added so a customer/vendor can
+  // see the status of disputes they personally raised.
+  raisedByUserId String?
+  against      String?  // vendor name/id being disputed
+  type         String   // defective | quality_rejection | partial_shortage | non_delivery | other
+  description  String?
+  evidenceUrls String[] @default([])
+  stage        String   @default("Evidence Review") // Evidence Review | Vendor Response Pending | Admin Arbitration | Refund Approved | Closed | Rejected
+  resolution   String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@map("ecom_disputes")
+}
+
+// ---------------------------------------------------------------------------
+// Automated Return / Refund Requests (Doc §3.1)
+// ---------------------------------------------------------------------------
+model ReturnRequest {
+  id            String   @id @default(cuid())
+  orderId       String
+  userId        String?
+  reason        String
+  photos        String[] @default([])
+  status        String   @default("Requested") // Requested | Approved | Rejected | PickupScheduled | Refunded
+  refundAmount  Float?
+  refundMethod  String?  // wallet | source_account
+  adminNote     String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@map("ecom_return_requests")
+}
+
+model SavedAddress {
+  id          String   @id @default(cuid())
+  userId      String?
+  user        User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  label       String   // "Home" | "Work" | "Other" — free text
+  type        String?  @default("Home")
+  fullName    String?
+  phone       String?
+  line1       String?
+  line2       String?
+  landmark    String?
+  city        String?
+  state       String?
+  pincode     String
+  isDefault   Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("ecom_saved_addresses")
+}
+
+// ---------------------------------------------------------------------------
+// Marketing / CMS (Admin)
+// ---------------------------------------------------------------------------
+model Banner {
+  id        String   @id @default(cuid())
+  title     String
+  channel   String? // B2B | B2C
+  placement String?
+  status    String?  @default("Live")
+  clicks    Int?     @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("ecom_banners")
+}
+
+model Coupon {
+  code        String   @id
+  type        String
+  value       String
+  channel     String? // B2B | B2C
+  costBorneBy String?
+  uses        Int?     @default(0)
+  status      String?  @default("Active")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("ecom_coupons")
+}
+
+// ---------------------------------------------------------------------------
+// Analytics & BI (Admin)
+// ---------------------------------------------------------------------------
+model HeroStat {
+  id    String @id @default(cuid())
+  label String
+  value String
+
+  @@map("ecom_hero_stats")
+}
+
+model GmvTrend {
+  id    String @id @default(cuid())
+  month String
+  b2c   Float
+  b2b   Float
+
+  @@map("ecom_gmv_trends")
+}
+
+model Cohort {
+  id       String  @id @default(cuid())
+  segment  String
+  retail   String
+  business String
+  risk     String?
+
+  @@map("ecom_cohorts")
+}
+
+// ---------------------------------------------------------------------------
+// Tax, Compliance & Audit Center (Admin)
+// ---------------------------------------------------------------------------
+model GstSummary {
+  id           String   @id @default(cuid())
+  state        String
+  hsn          String?
+  gstCollected Float?   @default(0)
+  invoicesIRN  Int?     @default(0)
+  status       String?  @default("Pending Review")
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@map("ecom_gst_summary")
+}
+
+model ActivityLog {
+  id        String   @id @default(cuid())
+  actor     String
+  action    String
+  ip        String?
+  time      String?
+  createdAt DateTime @default(now())
+
+  @@map("ecom_activity_logs")
+}
+
+// ---------------------------------------------------------------------------
+// System & Integrations (Admin)
+// ---------------------------------------------------------------------------
+model NotificationRule {
+  id       String  @id @default(cuid())
+  audience String
+  trigger  String
+  channel  String?
+  status   String? @default("Enabled")
+
+  @@map("ecom_notification_rules")
+}
+
+model Integration {
+  id       String  @id @default(cuid())
+  name     String
+  category String?
+  status   String? @default("Not Connected")
+
+  @@map("ecom_integrations")
+}
+
+model SecuritySetting {
+  id      String  @id @default(cuid())
+  control String
+  scope   String?
+  status  String? @default("Enforced")
+
+  @@map("ecom_security_settings")
+}
+
+model Language {
+  id       String  @id @default(cuid())
+  code     String  @unique
+  name     String
+  coverage String?
+
+  @@map("ecom_languages")
+}
+
+model SupportTicket {
+  id        String   @id @default(cuid())
+  from      String // customer name or email
+  email     String? // reply-to address, if different from `from`
+  subject   String
+  message   String? // the actual message body sent by the customer
+  priority  String?
+  status    String?  @default("Open")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("ecom_support_tickets")
+}
+
+// ---------------------------------------------------------------------------
+// Homepage / storefront content — editable from Admin > CMS > Homepage
+// without a code deploy. Each row is one named section; `value` holds
+// whatever shape that section needs (object or array), validated loosely
+// on the frontend.
+// ---------------------------------------------------------------------------
+model SiteContent {
+  key       String   @id // e.g. "homepage.hero", "homepage.howItWorks", "homepage.testimonials", "homepage.trending"
+  value     Json
+  updatedAt DateTime @updatedAt
+
+  @@map("ecom_site_content")
+}
+
+// ---------------------------------------------------------------------------
+// Customer <-> Admin support chat
+// ---------------------------------------------------------------------------
+model ChatThread {
+  id         String   @id @default(cuid())
+  userId     String?  // customer's User.id, if signed in
+  userName   String   // shown in the admin inbox list
+  userRole   String?  @default("customer") // customer | vendor | b2b
+  subject    String?
+  status     String?  @default("Open") // Open | Resolved
+  lastMessage String?
+  unreadForAdmin    Int @default(0)
+  unreadForCustomer Int @default(0)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  messages ChatMessage[]
+
+  @@map("ecom_chat_threads")
+}
+
+model ChatMessage {
+  id        String     @id @default(cuid())
+  threadId  String
+  thread    ChatThread @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  sender    String     // "customer" | "admin"
+  senderName String?
+  body      String
+  createdAt DateTime   @default(now())
+
+  @@map("ecom_chat_messages")
+}
+
+// ---------------------------------------------------------------------------
+// Storage (MinIO / S3) — every uploaded file (product images, KYC docs, etc.)
+// is logged here so it can be listed / deleted through the API.
+// ---------------------------------------------------------------------------
+model UploadedFile {
+  id        String   @id @default(cuid())
+  key       String
+  url       String
+  mimeType  String?
+  size      Int?
+  folder    String?
+  createdAt DateTime @default(now())
+
+  @@map("ecom_uploaded_files")
+}

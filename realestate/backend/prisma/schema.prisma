@@ -1,0 +1,702 @@
+// ============================================================================
+// Pavitram Real Estate — Prisma schema
+//
+// IMPORTANT: This service does NOT own authentication. Signup/Signin/password
+// reset all happen on the central Pavitram Auth API
+// (https://mainbackend.pavitramindia.com/api/v1). This service verifies the
+// bearer token against that API (see src/central-auth) and keeps a local
+// "shadow" row per user (RealUser) so we can attach real-estate specific
+// data (roles within this module, owner/provider details, listings, etc.)
+// to a stable local id, without ever storing a password.
+//
+// Every table name is prefixed with `realnew_` as requested (shares the existing pavitram_db with the other project).
+// ============================================================================
+
+generator client {
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "linux-musl-openssl-3.0.x"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ----------------------------------------------------------------------------
+// Enums
+// ----------------------------------------------------------------------------
+
+/// Functional role(s) within the real-estate module. Independent from the
+/// central auth `role` (USER / ADMIN / SUPER_ADMIN). A single user can hold
+/// more than one of these (e.g. someone can be a SEEKER and later also
+/// become an OWNER once they list a property).
+enum RealRole {
+  SEEKER
+  OWNER
+  PROVIDER
+  ADMIN
+
+  @@map("realnew_role")
+}
+
+/// Sub-type of an OWNER account — mirrors the frontend's postedByType.
+enum OwnerType {
+  OWNER
+  AGENT
+  BUILDER
+
+  @@map("realnew_owner_type")
+}
+
+enum PropertyType {
+  APARTMENT
+  VILLA
+  PLOT
+  COMMERCIAL
+  PG_COLIVING
+
+  @@map("realnew_property_type")
+}
+
+enum ListingIntent {
+  BUY
+  RENT
+  PG
+
+  @@map("realnew_listing_intent")
+}
+
+enum PriceUnit {
+  TOTAL
+  MONTH
+
+  @@map("realnew_price_unit")
+}
+
+enum Possession {
+  READY_TO_MOVE
+  UNDER_CONSTRUCTION
+
+  @@map("realnew_possession")
+}
+
+enum Furnishing {
+  UNFURNISHED
+  SEMI_FURNISHED
+  FURNISHED
+
+  @@map("realnew_furnishing")
+}
+
+/// Admin moderation state for a listing (property or project).
+enum ModerationStatus {
+  PENDING_REVIEW
+  APPROVED
+  FLAGGED
+  REJECTED
+
+  @@map("realnew_moderation_status")
+}
+
+enum KycStatus {
+  PENDING
+  VERIFIED
+  ON_HOLD
+  REJECTED
+
+  @@map("realnew_kyc_status")
+}
+
+enum ProjectType {
+  RESIDENTIAL
+  COMMERCIAL
+  MIXED_USE
+
+  @@map("realnew_project_type")
+}
+
+enum ProjectStatus {
+  NEW_LAUNCH
+  UNDER_CONSTRUCTION
+  READY_TO_MOVE
+
+  @@map("realnew_project_status")
+}
+
+enum LeadStage {
+  NEW
+  CONTACTED
+  SITE_VISIT_SCHEDULED
+  NEGOTIATION
+  CLOSED
+  LOST
+
+  @@map("realnew_lead_stage")
+}
+
+enum SiteVisitStatus {
+  REQUESTED
+  CONFIRMED
+  COMPLETED
+  CANCELLED
+  RESCHEDULED
+
+  @@map("realnew_site_visit_status")
+}
+
+enum ServiceCategory {
+  MATERIAL_SUPPLIERS
+  LEGAL_SERVICES
+  HOME_SERVICES
+  FINANCE_LOANS
+
+  @@map("realnew_service_category")
+}
+
+enum ServiceBookingStatus {
+  NEW
+  ACCEPTED
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+
+  @@map("realnew_service_booking_status")
+}
+
+enum ReviewTargetType {
+  PROPERTY
+  PROJECT
+  SERVICE_PROVIDER
+
+  @@map("realnew_review_target_type")
+}
+
+enum SubscriptionPlanCode {
+  FREE
+  BASIC
+  PRO
+  ENTERPRISE
+
+  @@map("realnew_subscription_plan_code")
+}
+
+enum SubscriptionStatus {
+  ACTIVE
+  EXPIRED
+  CANCELLED
+
+  @@map("realnew_subscription_status")
+}
+
+enum NotificationType {
+  LEAD
+  LISTING
+  SYSTEM
+  PAYMENT
+  MESSAGE
+  SITE_VISIT
+  MODERATION
+
+  @@map("realnew_notification_type")
+}
+
+// ----------------------------------------------------------------------------
+// Users (shadow of the central auth user)
+// ----------------------------------------------------------------------------
+
+model RealUser {
+  id String @id @default(cuid())
+
+  /// `id` of this user on the central Pavitram Auth API. This is the only
+  /// durable link back to the source of truth — we never store a password.
+  centralUserId String @unique
+
+  // Cached copy of a few central-auth fields, refreshed on every login /
+  // /auth/me check, purely so we can join/display without calling the
+  // central API on every read.
+  email String  @unique
+  phone String?
+  name  String?
+
+  /// Role(s) this user has *within the real-estate module*.
+  roles RealRole[] @default([SEEKER])
+
+  // Owner / Agent / Builder specific fields
+  ownerType    OwnerType?
+  businessName String?
+  reraNumber   String?
+  kycStatus    KycStatus  @default(PENDING)
+
+  // Common profile fields
+  avatarUrl    String?
+  address      String?
+  city         String?
+  state        String?
+  profession   String?
+  designation  String?
+  organization String?
+  bio          String?
+
+  isActive Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  properties          RealProperty[]
+  projects            RealProject[]
+  leadsOwned          RealLead[]              @relation("LeadOwner")
+  leadsAsSeeker       RealLead[]              @relation("LeadSeeker")
+  siteVisitsRequested RealSiteVisit[]         @relation("SiteVisitSeeker")
+  siteVisitsHosted    RealSiteVisit[]         @relation("SiteVisitHost")
+  wishlistItems       RealWishlistItem[]
+  savedSearches       RealSavedSearch[]
+  sentMessages        RealMessage[]           @relation("MessageSender")
+  conversationsAsA    RealConversation[]      @relation("ConversationParticipantA")
+  conversationsAsB    RealConversation[]      @relation("ConversationParticipantB")
+  providerProfile     RealServiceProvider?
+  serviceBookingsMade RealServiceBooking[]    @relation("ServiceBookingCustomer")
+  reviewsWritten      RealReview[]
+  subscriptions       RealSubscription[]
+  notifications       RealNotification[]
+  kycDocuments        RealKycDocument[]
+  auditLogsActedBy    RealAuditLog[]
+
+  @@map("realnew_users")
+}
+
+model RealKycDocument {
+  id String @id @default(cuid())
+
+  userId String
+  user   RealUser @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  docType  String // e.g. "PAN", "AADHAAR", "RERA_CERTIFICATE", "GST"
+  docUrl   String
+  status   KycStatus @default(PENDING)
+  remarks  String?
+
+  reviewedByCentralUserId String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+  @@map("realnew_kyc_documents")
+}
+
+// ----------------------------------------------------------------------------
+// Properties (resale / rent / PG listings posted by Owner / Agent / Builder)
+// ----------------------------------------------------------------------------
+
+model RealProperty {
+  id String @id @default(cuid())
+
+  ownerId String
+  owner   RealUser @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+
+  title       String
+  description String?
+  type        PropertyType
+  intent      ListingIntent
+
+  city     String
+  locality String
+  address  String?
+  lat      Float?
+  lng      Float?
+
+  price     Int
+  priceUnit PriceUnit @default(TOTAL)
+
+  bhk        String?
+  areaSqft   Int
+  possession Possession
+  furnishing Furnishing
+
+  amenities String[] @default([])
+  images    String[] @default([])
+
+  verified Boolean          @default(false)
+  status   ModerationStatus @default(PENDING_REVIEW)
+  moderationRemarks String?
+
+  isActive Boolean @default(true)
+
+  views       Int @default(0)
+  shortlists  Int @default(0)
+  inquiries   Int @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  leads          RealLead[]
+  siteVisits     RealSiteVisit[]
+  wishlistedBy   RealWishlistItem[]
+  reviews        RealReview[]
+
+  @@index([city, locality])
+  @@index([ownerId])
+  @@index([type, intent])
+  @@map("realnew_properties")
+}
+
+// ----------------------------------------------------------------------------
+// Projects (new-launch builder projects) + Units
+// ----------------------------------------------------------------------------
+
+model RealProject {
+  id String @id @default(cuid())
+
+  builderId String
+  builder   RealUser @relation(fields: [builderId], references: [id], onDelete: Cascade)
+
+  name     String
+  city     String
+  locality String
+  type     ProjectType
+
+  priceFrom Int
+  priceTo   Int
+
+  configurations String[] @default([])
+  areaFrom       Int
+  areaTo         Int
+
+  possessionLabel String // e.g. "Dec 2027" (free text, matches frontend)
+  status          ProjectStatus
+
+  rera         String?
+  reraVerified Boolean @default(false)
+
+  totalUnits Int @default(0)
+  towers     Int @default(1)
+
+  amenities    String[] @default([])
+  connectivity String[] @default([])
+  images       String[] @default([])
+  description  String?
+
+  moderationStatus  ModerationStatus @default(PENDING_REVIEW)
+  moderationRemarks String?
+  isActive          Boolean          @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  units      RealProjectUnit[]
+  siteVisits RealSiteVisit[]
+  reviews    RealReview[]
+
+  @@index([city, locality])
+  @@index([builderId])
+  @@map("realnew_projects")
+}
+
+model RealProjectUnit {
+  id String @id @default(cuid())
+
+  projectId String
+  project   RealProject @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  configuration String // e.g. "2 BHK"
+  areaSqft      Int
+  price         Int
+  unitsAvailable Int @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([projectId])
+  @@map("realnew_project_units")
+}
+
+// ----------------------------------------------------------------------------
+// Leads (owner-side CRM pipeline for enquiries on their listings)
+// ----------------------------------------------------------------------------
+
+model RealLead {
+  id String @id @default(cuid())
+
+  ownerId String
+  owner   RealUser @relation("LeadOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+
+  seekerId String?
+  seeker   RealUser? @relation("LeadSeeker", fields: [seekerId], references: [id], onDelete: SetNull)
+
+  propertyId String?
+  property   RealProperty? @relation(fields: [propertyId], references: [id], onDelete: SetNull)
+
+  name          String
+  phone         String
+  stage         LeadStage @default(NEW)
+  intentScore   Int       @default(50)
+  notes         String?
+  lastActivityAt DateTime @default(now())
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([ownerId, stage])
+  @@map("realnew_leads")
+}
+
+// ----------------------------------------------------------------------------
+// Site visits (booking a physical visit to a property or project)
+// ----------------------------------------------------------------------------
+
+model RealSiteVisit {
+  id String @id @default(cuid())
+
+  seekerId String
+  seeker   RealUser @relation("SiteVisitSeeker", fields: [seekerId], references: [id], onDelete: Cascade)
+
+  hostId String
+  host   RealUser @relation("SiteVisitHost", fields: [hostId], references: [id], onDelete: Cascade)
+
+  propertyId String?
+  property   RealProperty? @relation(fields: [propertyId], references: [id], onDelete: SetNull)
+
+  projectId String?
+  project   RealProject? @relation(fields: [projectId], references: [id], onDelete: SetNull)
+
+  scheduledAt DateTime
+  status      SiteVisitStatus @default(REQUESTED)
+  notes       String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([hostId, status])
+  @@index([seekerId])
+  @@map("realnew_site_visits")
+}
+
+// ----------------------------------------------------------------------------
+// Wishlist / Saved searches (seeker tools)
+// ----------------------------------------------------------------------------
+
+model RealWishlistItem {
+  id String @id @default(cuid())
+
+  userId String
+  user   RealUser @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  propertyId String
+  property   RealProperty @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@unique([userId, propertyId])
+  @@map("realnew_wishlist_items")
+}
+
+model RealSavedSearch {
+  id String @id @default(cuid())
+
+  userId String
+  user   RealUser @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  name    String
+  filters Json // arbitrary filter payload (city, type, intent, priceMin/Max, bhk, ...)
+
+  alertsEnabled Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+  @@map("realnew_saved_searches")
+}
+
+// ----------------------------------------------------------------------------
+// Messaging (in-platform chat between seeker <-> owner/agent/builder/provider)
+// ----------------------------------------------------------------------------
+
+model RealConversation {
+  id String @id @default(cuid())
+
+  participantAId String
+  participantA   RealUser @relation("ConversationParticipantA", fields: [participantAId], references: [id], onDelete: Cascade)
+
+  participantBId String
+  participantB   RealUser @relation("ConversationParticipantB", fields: [participantBId], references: [id], onDelete: Cascade)
+
+  propertyId String? // optional context: what listing this thread is about
+  lastMessageAt DateTime @default(now())
+
+  createdAt DateTime @default(now())
+
+  messages RealMessage[]
+
+  @@unique([participantAId, participantBId, propertyId])
+  @@map("realnew_conversations")
+}
+
+model RealMessage {
+  id String @id @default(cuid())
+
+  conversationId String
+  conversation   RealConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  senderId String
+  sender   RealUser @relation("MessageSender", fields: [senderId], references: [id], onDelete: Cascade)
+
+  body String
+  readAt DateTime?
+
+  createdAt DateTime @default(now())
+
+  @@index([conversationId, createdAt])
+  @@map("realnew_messages")
+}
+
+// ----------------------------------------------------------------------------
+// Service providers marketplace (material suppliers, legal, home services, finance)
+// ----------------------------------------------------------------------------
+
+model RealServiceProvider {
+  id String @id @default(cuid())
+
+  userId String   @unique
+  user   RealUser @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  displayName String
+  category    ServiceCategory
+  specialty   String?
+  city        String
+  priceFrom   String? // free text like frontend, e.g. "₹499"
+
+  ratingAvg   Float @default(0)
+  ratingCount Int   @default(0)
+  verified    Boolean @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  bookings RealServiceBooking[]
+  reviews  RealReview[]
+
+  @@index([category, city])
+  @@map("realnew_service_providers")
+}
+
+model RealServiceBooking {
+  id String @id @default(cuid())
+
+  providerId String
+  provider   RealServiceProvider @relation(fields: [providerId], references: [id], onDelete: Cascade)
+
+  customerId String
+  customer   RealUser @relation("ServiceBookingCustomer", fields: [customerId], references: [id], onDelete: Cascade)
+
+  serviceName String
+  scheduledAt DateTime
+  amount      Int
+  status      ServiceBookingStatus @default(NEW)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([providerId, status])
+  @@map("realnew_service_bookings")
+}
+
+// ----------------------------------------------------------------------------
+// Reviews (property, project or service provider)
+// ----------------------------------------------------------------------------
+
+model RealReview {
+  id String @id @default(cuid())
+
+  authorId String
+  author   RealUser @relation(fields: [authorId], references: [id], onDelete: Cascade)
+
+  targetType ReviewTargetType
+
+  propertyId String?
+  property   RealProperty? @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+
+  projectId String?
+  project   RealProject? @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  providerId String?
+  provider   RealServiceProvider? @relation(fields: [providerId], references: [id], onDelete: Cascade)
+
+  rating Int // 1-5
+  text   String?
+
+  createdAt DateTime @default(now())
+
+  @@index([propertyId])
+  @@index([projectId])
+  @@index([providerId])
+  @@map("realnew_reviews")
+}
+
+// ----------------------------------------------------------------------------
+// Subscriptions / credits (owner & provider plans)
+// ----------------------------------------------------------------------------
+
+model RealSubscription {
+  id String @id @default(cuid())
+
+  userId String
+  user   RealUser @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  planCode SubscriptionPlanCode @default(FREE)
+  status   SubscriptionStatus   @default(ACTIVE)
+
+  creditsTotal     Int @default(0)
+  creditsRemaining Int @default(0)
+
+  startedAt DateTime  @default(now())
+  expiresAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId, status])
+  @@map("realnew_subscriptions")
+}
+
+// ----------------------------------------------------------------------------
+// Notifications
+// ----------------------------------------------------------------------------
+
+model RealNotification {
+  id String @id @default(cuid())
+
+  userId String
+  user   RealUser @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  type  NotificationType
+  title String
+  body  String
+  read  Boolean @default(false)
+
+  createdAt DateTime @default(now())
+
+  @@index([userId, read])
+  @@map("realnew_notifications")
+}
+
+// ----------------------------------------------------------------------------
+// Audit log (admin moderation / role changes / KYC decisions)
+// ----------------------------------------------------------------------------
+
+model RealAuditLog {
+  id String @id @default(cuid())
+
+  actorId String?
+  actor   RealUser? @relation(fields: [actorId], references: [id], onDelete: SetNull)
+
+  action     String // e.g. "PROPERTY_APPROVED", "USER_ROLE_UPDATED"
+  entityType String // e.g. "RealProperty"
+  entityId   String?
+  metadata   Json?
+
+  createdAt DateTime @default(now())
+
+  @@index([entityType, entityId])
+  @@map("realnew_audit_logs")
+}

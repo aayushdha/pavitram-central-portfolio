@@ -1,0 +1,270 @@
+"use client";
+
+import Link from "next/link";
+import { useState } from "react";
+import { motion } from "framer-motion";
+import {
+  ShieldCheck,
+  Sprout,
+  Star,
+  Rocket,
+  Handshake,
+  User,
+  Home,
+  Users,
+  Flag,
+  Quote,
+  ArrowRight,
+  Check,
+} from "lucide-react";
+import { PageHero, Reveal, GoldLabel, FinalCTA } from "@/components/site";
+import { usePageHero } from "@/lib/api/use-page-hero";
+
+const TABS = [
+  {
+    id: "vision",
+    label: "Our Vision",
+    title: "Our Vision",
+    hindi: "हमारी दृष्टि",
+    body: "We are building a self-reliant cooperative ecosystem where every member — from the humblest village family to the ambitious urban entrepreneur — can fulfill all their needs through the strength of the community itself.",
+    items: [
+      "Intellectual Citizen — प्रबुद्ध नागरिक",
+      "Prosperous Family — समृद्ध परिवार",
+      "Self-Reliant Society — आत्म निर्भर समाज",
+      "Developed India — विकसित भारत",
+    ],
+  },
+  {
+    id: "mission",
+    label: "Our Mission",
+    title: "Our Mission",
+    hindi: "हमारा मिशन",
+    body: "To build a transparent, ethical, and inclusive cooperative platform that empowers every Indian through collective action, shared resources, and mutual growth.",
+    items: [
+      "Sabka Saath — सबका साथ",
+      "Sabka Prayaas — सबका प्रयास",
+      "Sabka Vikas — सबका विकास",
+      "Sabka Vishwas — सबका विश्वास",
+    ],
+  },
+  {
+    id: "philosophy",
+    label: "Our Philosophy",
+    title: "Our Philosophy",
+    hindi: "हमारा दर्शन",
+    body: "Rooted in timeless Indian values and guided by principles that place people above profit, our philosophy shapes every decision, every partnership, and every service we offer.",
+    items: [
+      "Akhanda — अखंडता (Integrity)",
+      "Paardarsita — पारदर्शिता (Transparency)",
+      "Navaachar — नवाचार (Innovation)",
+      "Gathbandhan — गठबंधन (Collaboration)",
+    ],
+  },
+];
+
+const VALUES = [
+  {
+    icon: ShieldCheck,
+    title: "Integrity",
+    body: "Fair, honest, transparent and ethical in conduct.",
+  },
+  {
+    icon: Sprout,
+    title: "Responsibility",
+    body: "Environmental and social principles in all businesses.",
+  },
+  {
+    icon: Star,
+    title: "Excellence",
+    body: "Highest standard of qualities, promoting meritocracy.",
+  },
+  { icon: Rocket, title: "Pioneering", body: "Bold, agile, courageous — innovative solutions." },
+  {
+    icon: Handshake,
+    title: "Unity",
+    body: "Continuous learning, caring and collaborative relationships.",
+  },
+];
+
+const TREE = [
+  { Icon: User, label: "Intellectual Citizen" },
+  { Icon: Home, label: "Prosperous Family" },
+  { Icon: Users, label: "Self-Reliant Society" },
+  { Icon: Flag, label: "Developed India" },
+];
+
+export default function AboutPage() {
+  const [tab, setTab] = useState("vision");
+  const active = TABS.find((t) => t.id === tab)!;
+
+  const hero = usePageHero("about", { title: "About Pavitram India", hindi: "हमारे बारे में" });
+
+  return (
+    <>
+      <PageHero
+        breadcrumb={[{ label: "Home", to: "/" }, { label: "About Us" }]}
+        label="Our Story"
+        title={hero.title}
+        hindi={hero.hindi}
+      />
+
+      {/* How it began */}
+      <section className="bg-white py-24 md:py-32">
+        <div className="mx-auto grid max-w-7xl gap-16 px-6 lg:grid-cols-2 lg:gap-20">
+          <Reveal>
+            <GoldLabel>How It Began</GoldLabel>
+            <h2 className="mt-5 font-display text-3xl font-bold text-ink md:text-[42px]">
+              Our Story
+            </h2>
+            <p className="mt-6 text-[17px] leading-[1.85] text-mist">
+              Pavitram India began with a clear mission: to organize independent professionals and
+              businesses into a powerful, cooperative network. Our founders recognized that by
+              working together, we could create a more efficient and transparent ecosystem for
+              everyone.
+            </p>
+            <div className="mt-8 text-2xl text-gold">◆</div>
+          </Reveal>
+
+          <Reveal delay={0.1}>
+            <div className="relative rounded-3xl bg-navy p-8 shadow-[0_30px_80px_-20px_rgba(10,15,30,0.5)] ring-1 ring-gold/30 md:p-10">
+              <div className="absolute inset-0 -z-10 rounded-3xl bg-gold/10 blur-2xl" />
+              <div className="flex gap-6 border-b border-white/10">
+                {TABS.map((t) => (
+                  <button
+                    key={t.id}
+                    onClick={() => setTab(t.id)}
+                    className={`relative pb-4 text-sm font-semibold transition ${tab === t.id ? "text-gold" : "text-white/60 hover:text-white"}`}
+                  >
+                    {t.label}
+                    {tab === t.id && (
+                      <motion.span
+                        layoutId="aboutTab"
+                        className="absolute -bottom-px left-0 right-0 h-0.5 bg-gold"
+                      />
+                    )}
+                  </button>
+                ))}
+              </div>
+              <motion.div
+                key={active.id}
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="mt-6 space-y-4 text-left"
+              >
+                <h3 className="font-display text-2xl font-bold text-white">{active.title}</h3>
+                <p className="font-deva text-base font-semibold text-gold">{active.hindi}</p>
+                <p className="text-[15px] leading-[1.85] text-white/80">{active.body}</p>
+                <div className="mt-6 grid gap-3 sm:grid-cols-2">
+                  {active.items.map((item) => (
+                    <div key={item} className="flex items-center gap-2 text-sm text-white/90">
+                      <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-gold/15 text-gold">
+                        <Check className="h-3 w-3" />
+                      </span>
+                      <span>{item}</span>
+                    </div>
+                  ))}
+                </div>
+              </motion.div>
+            </div>
+          </Reveal>
+        </div>
+      </section>
+
+      {/* Five core values */}
+      <section className="bg-haze py-24 md:py-32">
+        <div className="mx-auto max-w-7xl px-6">
+          <Reveal className="text-center">
+            <GoldLabel>Core Values</GoldLabel>
+            <h2 className="mt-5 font-display text-4xl font-bold text-ink md:text-[48px]">
+              Five Core Values
+            </h2>
+          </Reveal>
+          <div className="mt-14 grid gap-6 sm:grid-cols-2 lg:grid-cols-5">
+            {VALUES.map((v, i) => (
+              <Reveal key={v.title} delay={i * 0.05}>
+                <div className="group relative h-full rounded-2xl bg-white p-7 transition-all duration-300 hover:-translate-y-1.5 hover:shadow-[0_20px_50px_-10px_rgba(13,27,62,0.18)]">
+                  <span className="absolute inset-x-0 top-0 h-1 origin-left scale-x-0 rounded-t-2xl bg-gold transition-transform duration-300 group-hover:scale-x-100" />
+                  <div className="grid h-12 w-12 place-items-center rounded-xl bg-gold/10 text-gold">
+                    <v.icon className="h-6 w-6" />
+                  </div>
+                  <h3 className="mt-5 font-display text-xl font-bold text-ink">{v.title}</h3>
+                  <p className="mt-2 text-sm leading-relaxed text-mist">{v.body}</p>
+                </div>
+              </Reveal>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* Code of conduct banner */}
+      <section className="relative isolate overflow-hidden bg-navy py-24 md:py-32">
+        <div
+          className="absolute inset-0 opacity-20"
+          style={{
+            backgroundImage: "radial-gradient(rgba(201,149,42,0.4) 1px, transparent 1px)",
+            backgroundSize: "24px 24px",
+          }}
+        />
+        <Reveal className="relative mx-auto max-w-3xl px-6 text-center">
+          <Quote className="mx-auto h-10 w-10 text-gold" />
+          <p className="mt-6 font-display text-xl italic leading-[1.6] text-white md:text-2xl">
+            &ldquo;The code of conducts provides an ethical road map and guidelines for our values of
+            integrity, responsibility, excellence, pioneering and unity to protect the interests of
+            all associates.&rdquo;
+          </p>
+          <Quote className="mx-auto mt-6 h-10 w-10 rotate-180 text-gold" />
+        </Reveal>
+      </section>
+
+      {/* Family tree */}
+      <section className="bg-white py-24 md:py-32">
+        <div className="mx-auto max-w-3xl px-6">
+          <Reveal className="text-center">
+            <GoldLabel>Our Structure</GoldLabel>
+            <h2 className="mt-5 font-display text-4xl font-bold text-ink md:text-[48px]">
+              The Pavitram Family Tree
+            </h2>
+          </Reveal>
+
+          <div className="relative mt-16">
+            {TREE.map((n, i) => (
+              <Reveal key={n.label} delay={i * 0.15}>
+                <div className="relative flex items-center gap-6 py-5">
+                  <div className="grid h-16 w-16 shrink-0 place-items-center rounded-full bg-navy text-gold ring-2 ring-gold/40 shadow-[0_0_30px_rgba(201,149,42,0.25)]">
+                    <n.Icon className="h-7 w-7" />
+                  </div>
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-widest text-gold">
+                      Level {i + 1}
+                    </p>
+                    <p className="font-display text-2xl font-bold text-ink">{n.label}</p>
+                  </div>
+                  {i < TREE.length - 1 && (
+                    <motion.span
+                      initial={{ scaleY: 0 }}
+                      whileInView={{ scaleY: 1 }}
+                      viewport={{ once: true }}
+                      transition={{ duration: 0.6, delay: 0.1 }}
+                      className="absolute left-8 top-[76px] block h-10 w-0.5 origin-top bg-gradient-to-b from-gold to-gold/20"
+                    />
+                  )}
+                </div>
+              </Reveal>
+            ))}
+          </div>
+
+          <Reveal className="mt-14 flex justify-center gap-4">
+            <Link
+              href="/about/vision"
+              className="inline-flex items-center gap-2 rounded-full border-2 border-gold px-6 py-3 text-sm font-bold text-gold transition hover:bg-gold hover:text-navy"
+            >
+              Explore Our Vision <ArrowRight className="h-4 w-4" />
+            </Link>
+          </Reveal>
+        </div>
+      </section>
+
+      <FinalCTA />
+    </>
+  );
+}
